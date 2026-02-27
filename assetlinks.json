@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.pirio97.twa",
+        "sha256_cert_fingerprints": ["F1:AE:14:22:4B:93:DE:FE:64:42:8D:45:2C:F9:66:EA:6B:1C:01:88:5D:C1:FC:F6:67:68:4B:39:7C:D4:41:82"]
+      }
+    }]
