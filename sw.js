@@ -1,5 +1,5 @@
-const CACHE_NAME = 'leonardo-finance-v3';
-const ASSETS = [
+const CACHE_NAME = 'leonardo-finance-v4';
+const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
@@ -15,7 +15,7 @@ const ASSETS = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
+      .then(cache => cache.addAll(ASSETS_TO_CACHE))
       .then(() => self.skipWaiting())
   );
 });
@@ -30,6 +30,24 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) return;
+
+  // For HTML, Manifest, and SW itself, try network first to always get the latest version.
+  if (event.request.mode === 'navigate' ||
+    event.request.url.endsWith('index.html') ||
+    event.request.url.endsWith('manifest.json')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match(event.request).then(res => res || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // For libraries, images, etc. use Cache First, fallback to network
   event.respondWith(
     caches.match(event.request).then(cached => {
       return cached || fetch(event.request).then(response => {
@@ -37,7 +55,7 @@ self.addEventListener('fetch', event => {
         const clone = response.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         return response;
-      }).catch(() => caches.match('./index.html'));
+      });
     })
   );
 });

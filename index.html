@@ -636,10 +636,21 @@
                 }
             },
 
-            clearData() {
-                if (confirm("Sei sicuro di voler svuotare la memoria dell'app? Dovrai ricaricare il file Excel o il link Google Sheets.")) {
+            async clearData() {
+                if (confirm("Sei sicuro di voler svuotare la memoria dell'app? Questo cancellerà tutti i dati salvati e forzerà un aggiornamento completo dell'app.")) {
                     localStorage.removeItem('leonardo_finance_data');
-                    location.reload();
+                    localStorage.removeItem('leonardo_debts');
+
+                    try {
+                        // Unregister service workers
+                        const registrations = await navigator.serviceWorker.getRegistrations();
+                        for (let r of registrations) { await r.unregister(); }
+                        // Clear caches
+                        const cacheKeys = await caches.keys();
+                        for (let key of cacheKeys) { await caches.delete(key); }
+                    } catch (e) { console.error("Errore pulizia worker", e); }
+
+                    location.reload(true);
                 }
             },
 
@@ -669,8 +680,13 @@
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (evt) => {
-                    const data = new Uint8Array(evt.target.result);
-                    this.processExcelData(data, file.name);
+                    try {
+                        const data = new Uint8Array(evt.target.result);
+                        this.processExcelData(data, file.name);
+                    } catch (err) {
+                        console.error("Errore lettura file locale", err);
+                        alert("Errore nella lettura del file Excel. Assicurati che non sia corrotto.");
+                    }
                 };
                 reader.readAsArrayBuffer(file);
             },
@@ -679,18 +695,21 @@
                 let url = document.getElementById('gsheets-url').value.trim();
                 if (!url) return alert("Inserisci un link Google Sheets valido");
 
-                // Convert Google Sheets URL to export XLSX URL
                 try {
-                    const match = url.match(/\/d\/(.*?)\//);
-                    if (!match) throw new Error("Link non valido");
-                    const sheetId = match[1];
-                    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+                    let exportUrl = url;
+                    // Se usa il link standard di condivisione, prova a convertirlo in link export
+                    if (url.includes('/edit') || url.includes('/view')) {
+                        const match = url.match(/\/d\/(.*?)\//);
+                        if (match) exportUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=xlsx`;
+                    }
 
                     const btn = document.querySelector('button[onclick="app.loadFromGSheets()"]');
                     const oldHtml = btn.innerHTML;
                     btn.innerHTML = `<i data-lucide="loader-2" class="animate-spin" style="width:20px;height:20px;"></i>`;
                     if (typeof lucide !== 'undefined') lucide.createIcons();
 
+                    // Nota: fetch da browser a Google Sheets export può dare errore CORS.
+                    // Per aggirare, proviamo prima fetch normale.
                     const response = await fetch(exportUrl);
                     if (!response.ok) throw new Error("Errore network");
 
@@ -699,8 +718,8 @@
                     this.processExcelData(data, "Google Sheets Sync");
 
                 } catch (e) {
-                    console.error(e);
-                    alert("Errore nel download. Assicurati che il link sia corretto e il file sia impostato su 'Chiunque abbia il link può leggere'.");
+                    console.error("Fetch fallito (probabile errore CORS)", e);
+                    alert("Impossibile scaricare direttamente dal link (protezione del browser CORS).\n\nPer usare il link Google Sheets devi:\n1. Aprire il foglio Excel su Google Sheets\n2. Andare su File -> Condividi -> Pubblica sul Web\n3. Scegliere 'Intero documento' e formato 'Microsoft Excel (.xlsx)'\n4. Cliccare Pubblica e incollare qui il link generato.\n\nIn alternativa, carica il file offline tramite il pulsante Carica RECAPspese.");
                 } finally {
                     const btn = document.querySelector('button[onclick="app.loadFromGSheets()"]');
                     if (btn) { btn.innerHTML = `<i data-lucide="cloud-download" style="width:20px;height:20px;"></i>`; if (typeof lucide !== 'undefined') lucide.createIcons(); }
@@ -724,15 +743,29 @@
             },
 
             finishLoading(filename) {
-                // Auto-detect date
-                if (this.state.data.RECAP && this.state.data.RECAP.length > 0) {
-                    const last = [...this.state.data.RECAP].sort((a, b) => (b.ANNO * 100 + MONTHS.indexOf(String(b.MESE).toLowerCase().trim())) - (a.ANNO * 100 + MONTHS.indexOf(String(a.MESE).toLowerCase().trim())))[0];
-                    if (last) {
-                        this.state.year = Math.floor(last.ANNO);
-                        this.state.month = String(last.MESE).toLowerCase().trim();
-                        document.getElementById('select-month').value = this.state.month;
-                        document.getElementById('select-year').value = this.state.year;
+                try {
+                    // Auto-detect date with fallback
+                    if (this.state.data && this.state.data.RECAP && this.state.data.RECAP.length > 0) {
+                        const recs = [...this.state.data.RECAP].filter(r => r.ANNO && r.MESE);
+                        if (recs.length > 0) {
+                            const last = recs.sort((a, b) => {
+                                const m1 = MONTHS.indexOf(String(b.MESE).toLowerCase().trim());
+                                const m2 = MONTHS.indexOf(String(a.MESE).toLowerCase().trim());
+                                return (b.ANNO * 100 + (m1 >= 0 ? m1 : 0)) - (a.ANNO * 100 + (m2 >= 0 ? m2 : 0));
+                            })[0];
+
+                            if (last) {
+                                this.state.year = Math.floor(last.ANNO);
+                                this.state.month = String(last.MESE).toLowerCase().trim();
+                                const selMonth = document.getElementById('select-month');
+                                const selYear = document.getElementById('select-year');
+                                if (selMonth) selMonth.value = this.state.month;
+                                if (selYear) selYear.value = this.state.year;
+                            }
+                        }
                     }
+                } catch (e) {
+                    console.warn("Errore rilevamento data automatica, uso predefiniti", e);
                 }
 
                 document.getElementById('screen-upload').style.display = 'none';
@@ -740,7 +773,13 @@
                 document.getElementById('bottom-nav').style.display = 'flex';
                 document.getElementById('fabs').style.display = 'flex';
                 document.getElementById('display-filename').innerText = filename;
-                this.render();
+
+                try {
+                    this.render();
+                } catch (e) {
+                    console.error("Errore renderizzazione app", e);
+                    alert("Errore nel visualizzare i dati. Il file potrebbe non avere le colonne previste (ANNO, MESE, ENTRATE, USCITE).");
+                }
             },
 
             saveLocalData() {
