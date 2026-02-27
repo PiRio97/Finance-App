@@ -3,25 +3,56 @@
   "short_name": "Finance",
   "id": "leonardo-finance-standalone",
   "description": "Gestione finanze personali offline",
-  "start_url": "index.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f0f4f8",
   "theme_color": "#243b53",
   "orientation": "portrait",
   "lang": "it",
+  "categories": [
+    "finance",
+    "productivity"
+  ],
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "./icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "./screenshot.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Leonardo Finance Dashboard"
+    },
+    {
+      "src": "./screenshot.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "label": "Leonardo Finance Dashboard"
     }
   ]
 }
