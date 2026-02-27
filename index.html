@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Finance">
+    <meta name="theme-color" content="#243b53">
+    <meta name="description" content="Gestione finanze personali offline">
+
+    <title>Leonardo Finance</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+    <!-- Local Libraries -->
+    <script src="lib/tailwind.js"></script>
+    <script src="lib/xlsx.min.js"></script>
+    <script src="lib/chart.js"></script>
+    <script src="lib/lucide.js"></script>
+
+    <style>
+        :root {
+            --glass: rgba(255, 255, 255, 0.75);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            --nav-h: 68px;
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+            min-height: 100vh;
+            min-height: 100dvh;
+            color: #102a43;
+            overscroll-behavior: none;
+        }
+
+        /* Glassmorphism */
+        .glass {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+        }
+
+        .card {
+            box-shadow: var(--shadow);
+            transition: all 0.2s;
+        }
+
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, #486581 0%, #243b53 100%);
+            color: white;
+            padding: 14px 24px;
+            border-radius: 16px;
+            font-weight: 700;
+            transition: all 0.2s;
+            touch-action: manipulation;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.97);
+            opacity: 0.9;
+        }
+
+        /* Bottom Navigation */
+        #bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: calc(var(--nav-h) + var(--safe-bottom));
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-around;
+            padding-top: 8px;
+            z-index: 40;
+        }
+
+        .nav-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            padding: 8px 20px;
+            border-radius: 14px;
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: all 0.2s;
+            touch-action: manipulation;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+
+        .nav-btn.active {
+            color: #243b53;
+        }
+
+        .nav-btn.active svg {
+            color: #243b53;
+        }
+
+        .nav-btn svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .nav-btn .nav-dot {
+            width: 4px;
+            height: 4px;
+            background: #243b53;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .nav-btn.active .nav-dot {
+            opacity: 1;
+        }
+
+        /* Main content padding for bottom nav */
+        #app-content {
+            padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 8px);
+        }
+
+        /* FABs - mobile position */
+        #fabs {
+            position: fixed;
+            bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 39;
+        }
+
+        .fab {
+            width: 54px;
+            height: 54px;
+            border-radius: 16px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s;
+            touch-action: manipulation;
+            cursor: pointer;
+        }
+
+        .fab:active {
+            transform: scale(0.93);
+        }
+
+        .fab svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Modal mobile full-screen */
+        #modal-container {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 50;
+            display: flex;
+            align-items: flex-end;
+            padding: 0;
+        }
+
+        #modal-inner {
+            background: white;
+            width: 100%;
+            max-height: 90dvh;
+            border-radius: 28px 28px 0 0;
+            padding: 24px 20px calc(20px + var(--safe-bottom));
+            overflow-y: auto;
+            animation: slideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .modal-handle {
+            width: 36px;
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            margin: 0 auto 20px;
+        }
+
+        /* Input fields - larger for touch */
+        .input-field {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 14px;
+            font-size: 16px;
+            /* prevent zoom on iOS */
+            font-weight: 600;
+            color: #102a43;
+            background: #f8fafc;
+            outline: none;
+            margin-bottom: 12px;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus {
+            border-color: #486581;
+            background: white;
+        }
+
+        /* Tab active */
+        .tab-active {
+            background: white;
+            color: #243b53;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        /* PWA install banner */
+        #pwa-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #243b53;
+            color: white;
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 60;
+            gap: 12px;
+            transform: translateY(-100%);
+            transition: transform 0.3s;
+        }
+
+        #pwa-banner.show {
+            transform: translateY(0);
+        }
+
+        #pwa-banner button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 12px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        /* Scrollbar hidden mobile */
+        ::-webkit-scrollbar {
+            width: 0;
+        }
+
+        /* Animations */
+        .animate-in {
+            animation: fadeUp 0.3s ease;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Upload screen */
+        #screen-upload {
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        /* Summary cards - 2 col on mobile */
+        #summary-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        @media (min-width: 768px) {
+            #summary-cards {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        /* Analysis chart taller on mobile */
+        #chart-history-wrap {
+            height: 320px;
+        }
+
+        @media (min-width: 768px) {
+            #chart-history-wrap {
+                height: 450px;
+            }
+        }
+
+        /* Month/year selector compact */
+        .sel-compact {
+            background: transparent;
+            font-weight: 700;
+            color: #334155;
+            padding: 8px 10px;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            border-radius: 12px;
+            font-size: 14px;
+            -webkit-appearance: none;
+        }
+
+        .sel-compact:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Debt cards - 1 col on mobile */
+        #debt-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        @media (min-width: 768px) {
+            #debt-list {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- PWA Install Banner -->
+    <div id="pwa-banner">
+        <span>📲 Aggiungi alla schermata home!</span>
+        <div style="display:flex; gap:8px; flex-shrink:0;">
+            <button id="pwa-install-btn">Installa</button>
+            <button onclick="document.getElementById('pwa-banner').classList.remove('show')"
+                style="background:transparent;border:none;opacity:0.6;">✕</button>
+        </div>
+    </div>
+
+    <div id="app">
+        <!-- Landing / Upload Screen -->
+        <div id="screen-upload">
+            <div class="glass card w-full max-w-sm" style="padding: 36px 28px; text-align:center;">
+                <div
+                    style="margin-bottom:20px; display:inline-flex; padding:18px; background:#eff6ff; border-radius:24px;">
+                    <i data-lucide="shield-check" style="width:48px;height:48px;color:#4f46e5;"></i>
+                </div>
+                <h1 style="font-size:28px; font-weight:900; margin-bottom:8px; letter-spacing:-0.5px;">Finance Offline
+                </h1>
+                <p style="color:#64748b; margin-bottom:28px; font-size:14px; line-height:1.5;">Versione standalone.
+                    Seleziona il tuo file Excel per iniziare.</p>
+
+                <label class="btn-primary"
+                    style="display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:16px; font-size:15px; cursor:pointer; border-radius:16px;">
+                    <i data-lucide="file-spreadsheet" style="width:20px;height:20px;"></i>
+                    Carica RECAPspese.xlsx
+                    <input type="file" id="input-file" style="display:none;" accept=".xlsx">
+                </label>
+
+                <div id="lib-status"
+                    style="margin-top:24px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; opacity:0.5;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div id="screen-main" style="display:none;" class="animate-in">
+            <div id="app-content">
+                <!-- Header -->
+                <div style="padding:16px 16px 8px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div
+                            style="width:38px;height:38px;background:#1e293b;border-radius:14px;display:flex;align-items:center;justify-content:center;">
+                            <i data-lucide="bar-chart-big" style="color:white;width:18px;height:18px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight:900;font-size:16px;letter-spacing:-0.3px;">Leonardo Finance</div>
+                            <div id="display-filename" style="color:#94a3b8;font-size:10px;font-weight:600;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Month/Year Selector -->
+                    <div class="glass" style="display:flex;align-items:center;padding:4px 8px;gap:2px;">
+                        <select id="select-month" class="sel-compact"></select>
+                        <select id="select-year" class="sel-compact" style="width:60px;"></select>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="app.download()"
+                            style="width:38px;height:38px;background:white;border:1px solid #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                            <i data-lucide="download" style="width:16px;height:16px;color:#64748b;"></i>
+                        </button>
+                        <button onclick="location.reload()"
+                            style="width:38px;height:38px;background:white;border:1px solid #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                            <i data-lucide="refresh-cw" style="width:16px;height:16px;color:#64748b;"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dashboard View -->
+                <div id="view-home" style="padding:12px 16px;" class="animate-in">
+                    <div id="summary-cards" style="margin-bottom:14px;"></div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                        <div class="glass card" style="padding:16px;">
+                            <h3
+                                style="font-size:11px;font-weight:900;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                                <i data-lucide="pie-chart" style="width:14px;height:14px;color:#3b82f6;"></i> Uscite
+                            </h3>
+                            <div style="height:160px;"><canvas id="chart-expenses"></canvas></div>
+                        </div>
+                        <div class="glass card" style="padding:16px;">
+                            <h3
+                                style="font-size:11px;font-weight:900;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+                                <i data-lucide="coins" style="width:14px;height:14px;color:#10b981;"></i> Investimenti
+                            </h3>
+                            <div style="height:160px;"><canvas id="chart-investments"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- Debts -->
+                    <div style="margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <h3 style="font-size:16px;font-weight:900;letter-spacing:-0.3px;">Debiti e Prestiti</h3>
+                            <button onclick="app.showModal('debt')" class="btn-primary"
+                                style="display:flex;align-items:center;gap:6px;padding:10px 14px;font-size:12px;">
+                                <i data-lucide="plus" style="width:14px;height:14px;"></i> Aggiungi
+                            </button>
+                        </div>
+                        <div id="debt-list"></div>
+                    </div>
+                </div>
+
+                <!-- Analysis View -->
+                <div id="view-analysis" style="display:none;padding:12px 16px;" class="animate-in">
+                    <!-- Period Selectors -->
+                    <div class="glass card" style="padding:16px;margin-bottom:12px;">
+                        <h3
+                            style="font-size:13px;font-weight:900;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                            <i data-lucide="calendar-range" style="width:14px;height:14px;color:#6366f1;"></i> Periodo
+                        </h3>
+                        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:8px;">
+                            <div>
+                                <div
+                                    style="font-size:9px;font-weight:900;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">
+                                    Da</div>
+                                <select id="analysis-from-month" onchange="app.renderAnalysis()" class="input-field"
+                                    style="margin-bottom:6px;font-size:13px;padding:10px 12px;"></select>
+                                <select id="analysis-from-year" onchange="app.renderAnalysis()" class="input-field"
+                                    style="margin-bottom:0;font-size:13px;padding:10px 12px;"></select>
+                            </div>
+                            <div style="padding-bottom:6px;color:#cbd5e1;font-size:18px;font-weight:900;">→</div>
+                            <div>
+                                <div
+                                    style="font-size:9px;font-weight:900;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">
+                                    A</div>
+                                <select id="analysis-to-month" onchange="app.renderAnalysis()" class="input-field"
+                                    style="margin-bottom:6px;font-size:13px;padding:10px 12px;"></select>
+                                <select id="analysis-to-year" onchange="app.renderAnalysis()" class="input-field"
+                                    style="margin-bottom:0;font-size:13px;padding:10px 12px;"></select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="glass card" style="padding:16px;margin-bottom:12px;">
+                        <div id="analysis-checkboxes" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+                        </div>
+                        <div id="chart-history-wrap"><canvas id="chart-history"></canvas></div>
+                    </div>
+
+                    <div id="analysis-insights" style="padding:16px;background:#1e293b;color:white;border-radius:20px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation (hidden until file loaded) -->
+    <nav id="bottom-nav" style="display:none;">
+        <button class="nav-btn active" id="nav-home" onclick="app.setView('home')">
+            <i data-lucide="layout-dashboard" style="width:22px;height:22px;"></i>
+            <span>Dashboard</span>
+            <div class="nav-dot"></div>
+        </button>
+        <button class="nav-btn" id="nav-analysis" onclick="app.setView('analysis')">
+            <i data-lucide="trending-up" style="width:22px;height:22px;"></i>
+            <span>Analisi</span>
+            <div class="nav-dot"></div>
+        </button>
+    </nav>
+
+    <!-- FABs -->
+    <div id="fabs" style="display:none;">
+        <button class="fab" style="background:#ef4444;" onclick="app.showModal('expense')" title="Aggiungi Uscita">
+            <i data-lucide="minus-circle" style="width:24px;height:24px;color:white;"></i>
+        </button>
+        <button class="fab" style="background:#10b981;" onclick="app.showModal('income')" title="Aggiungi Entrata">
+            <i data-lucide="plus-circle" style="width:24px;height:24px;color:white;"></i>
+        </button>
+    </div>
+
+    <!-- Modal (bottom sheet on mobile) -->
+    <div id="modal-container" style="display:none;" onclick="if(event.target===this)app.hideModal()">
+        <div id="modal-inner">
+            <div class="modal-handle"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 id="modal-title" style="font-size:20px;font-weight:900;letter-spacing:-0.3px;"></h3>
+                <button onclick="app.hideModal()"
+                    style="width:34px;height:34px;background:#f1f5f9;border:none;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <i data-lucide="x" style="width:18px;height:18px;"></i>
+                </button>
+            </div>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // ── Core Logic ──────────────────────────────────────────────────────────────
+        const MONTHS = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+
+        const app = {
+            state: {
+                data: null,
+                month: 'gennaio',
+                year: 2025,
+                view: 'home',
+                debts: JSON.parse(localStorage.getItem('leonardo_debts') || '[]'),
+                charts: {}
+            },
+
+            init() {
+                // Check libs
+                const libs = { xlsx: typeof XLSX !== 'undefined', chart: typeof Chart !== 'undefined', lucide: typeof lucide !== 'undefined', tailwind: typeof tailwind !== 'undefined' };
+                const statusDiv = document.getElementById('lib-status');
+                Object.entries(libs).forEach(([name, ok]) => {
+                    statusDiv.innerHTML += `<span style="font-size:10px;font-weight:700;padding:4px 8px;border-radius:6px;border:1px solid;${ok ? 'background:#ecfdf5;color:#059669;border-color:#a7f3d0' : 'background:#fef2f2;color:#dc2626;border-color:#fecaca'}">${name.toUpperCase()} ${ok ? '✓' : '✗'}</span>`;
+                });
+
+                document.getElementById('input-file').addEventListener('change', e => this.handleFile(e));
+
+                // Month/Year selectors
+                const mSel = document.getElementById('select-month');
+                const ySel = document.getElementById('select-year');
+                MONTHS.forEach(m => mSel.innerHTML += `<option value="${m}">${m.substring(0, 3).toUpperCase()}</option>`);
+                [2022, 2023, 2024, 2025, 2026].forEach(y => ySel.innerHTML += `<option value="${y}">${y}</option>`);
+                mSel.addEventListener('change', e => { this.state.month = e.target.value; this.render(); });
+                ySel.addEventListener('change', e => { this.state.year = parseInt(e.target.value); this.render(); });
+
+                if (libs.lucide) lucide.createIcons();
+                this.initPWA();
+            },
+
+            initPWA() {
+                // Register service worker
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('./sw.js').catch(e => console.log('SW error', e));
+                }
+                // Install prompt
+                let deferredPrompt;
+                window.addEventListener('beforeinstallprompt', e => {
+                    e.preventDefault();
+                    deferredPrompt = e;
+                    setTimeout(() => document.getElementById('pwa-banner').classList.add('show'), 2000);
+                });
+                document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+                    if (!deferredPrompt) return;
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') document.getElementById('pwa-banner').classList.remove('show');
+                    deferredPrompt = null;
+                });
+            },
+
+            handleFile(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const data = new Uint8Array(evt.target.result);
+                    const wb = XLSX.read(data, { type: 'array' });
+                    const sheets = {};
+                    wb.SheetNames.forEach(n => sheets[n.toUpperCase().trim()] = XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: 0 }));
+
+                    this.state.data = {
+                        RECAP: sheets.RECAP || [],
+                        SPESE: sheets.SPESE || [],
+                        ENTRATE: sheets.ENTRATE || [],
+                        LOG_DATI: sheets.LOG_DATI || []
+                    };
+
+                    // Auto-detect date
+                    if (this.state.data.RECAP.length > 0) {
+                        const last = [...this.state.data.RECAP].sort((a, b) => (b.ANNO * 100 + MONTHS.indexOf(b.MESE?.toLowerCase())) - (a.ANNO * 100 + MONTHS.indexOf(a.MESE?.toLowerCase())))[0];
+                        if (last) {
+                            this.state.year = Math.floor(last.ANNO);
+                            this.state.month = String(last.MESE).toLowerCase().trim();
+                            document.getElementById('select-month').value = this.state.month;
+                            document.getElementById('select-year').value = this.state.year;
+                        }
+                    }
+
+                    document.getElementById('screen-upload').style.display = 'none';
+                    document.getElementById('screen-main').style.display = 'block';
+                    document.getElementById('bottom-nav').style.display = 'flex';
+                    document.getElementById('fabs').style.display = 'flex';
+                    document.getElementById('display-filename').innerText = file.name;
+                    this.render();
+                };
+                reader.readAsArrayBuffer(file);
+            },
+
+            parseMoney(v) {
+                if (typeof v === 'number') return v;
+                let s = String(v || "0").replace(/\s+/g, '').replace('€', '').trim();
+                return parseFloat(s.replace(',', '.')) || 0;
+            },
+
+            render() {
+                const d = this.state.data;
+                const filter = r => String(Math.floor(this.parseMoney(r.ANNO))) === String(this.state.year) && String(r.MESE || "").toLowerCase().trim() === this.state.month;
+                const rec = d.RECAP.find(filter) || {};
+                const spe = d.SPESE.find(filter) || {};
+                const ent = d.ENTRATE.find(filter) || {};
+
+                const saldo = this.parseMoney(ent.SALDO) || (this.parseMoney(rec.ENTRATE) - this.parseMoney(rec.USCITE));
+                const invTot = this.parseMoney(spe['CONTO DEPOSIT']) + this.parseMoney(spe['OBBLIGAZIONI']) + this.parseMoney(spe['AZIONARIO']);
+
+                document.getElementById('summary-cards').innerHTML = `
+                ${this.compCard("Saldo", "landmark", saldo, "#3b82f6", "#eff6ff")}
+                ${this.compCard("Entrate", "trending-up", this.parseMoney(rec.ENTRATE), "#10b981", "#f0fdf4")}
+                ${this.compCard("Uscite", "trending-down", this.parseMoney(rec.USCITE), "#ef4444", "#fff1f2")}
+                ${this.compCard("Portafoglio", "pie-chart", invTot, "#f59e0b", "#fffbeb")}
+            `;
+
+                this.renderExpenseChart(spe);
+                this.renderInvChart(spe);
+                this.renderDebts();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            },
+
+            compCard(title, icon, val, color, bg) {
+                const fmt = v => (typeof v === 'number' ? v : 0).toLocaleString('it-IT', { minimumFractionDigits: 2 });
+                return `
+                <div class="glass card" style="padding:14px 16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                        <div style="flex:1;min-width:0;">
+                            <p style="font-size:9px;font-weight:900;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">${title}</p>
+                            <h4 style="font-size:15px;font-weight:900;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">€ ${fmt(val)}</h4>
+                        </div>
+                        <div style="width:34px;height:34px;border-radius:10px;background:${bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px;">
+                            <i data-lucide="${icon}" style="width:16px;height:16px;color:${color};"></i>
+                        </div>
+                    </div>
+                </div>
+            `;
+            },
+
+            renderExpenseChart(row) {
+                const cats = Object.keys(row).filter(k => !["MESE", "ANNO", "TOTALE", "DEBITO"].includes(k));
+                const data = cats.map(c => ({ name: c, value: this.parseMoney(row[c]) })).filter(x => x.value > 0);
+                this.drawDoughnut('chart-expenses', data.map(d => d.name), data.map(d => d.value), ['#3b82f6', '#10b981', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4']);
+            },
+
+            renderInvChart(row) {
+                const data = [
+                    { name: 'Conto Dep.', value: this.parseMoney(row['CONTO DEPOSIT']) },
+                    { name: 'Obbligaz.', value: this.parseMoney(row['OBBLIGAZIONI']) },
+                    { name: 'Azionario', value: this.parseMoney(row['AZIONARIO']) }
+                ].filter(x => x.value > 0);
+                this.drawDoughnut('chart-investments', data.map(d => d.name), data.map(d => d.value), ['#60a5fa', '#34d399', '#f87171']);
+            },
+
+            drawDoughnut(id, labels, values, col) {
+                if (this.state.charts[id]) this.state.charts[id].destroy();
+                if (values.length === 0) return;
+                const ctx = document.getElementById(id).getContext('2d');
+                this.state.charts[id] = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { labels, datasets: [{ data: values, backgroundColor: col, borderWidth: 0, hoverOffset: 8 }] },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, font: { weight: 'bold', size: 9 }, padding: 6 } } } }
+                });
+            },
+
+            renderDebts() {
+                const container = document.getElementById('debt-list');
+                container.innerHTML = this.state.debts.map((d, i) => {
+                    const p = Math.min((d.paid / d.total) * 100, 100);
+                    return `
+                    <div class="glass card" style="padding:16px;border-left:4px solid #4f46e5;">
+                        <h4 style="font-weight:900;font-size:15px;margin-bottom:10px;text-transform:capitalize;">${d.name}</h4>
+                        <div style="background:#f1f5f9;border-radius:999px;height:6px;margin-bottom:8px;">
+                            <div style="background:#4f46e5;height:6px;border-radius:999px;width:${p}%;transition:width 0.4s;"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:12px;">
+                            <span>Versato: €${d.paid.toLocaleString('it-IT')}</span>
+                            <span>Rimane: €${(d.total - d.paid).toLocaleString('it-IT')}</span>
+                        </div>
+                        <button onclick="app.updateDebt(${i})" style="width:100%;padding:10px;background:#1e293b;color:white;border:none;border-radius:12px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;cursor:pointer;">Versa Quota</button>
+                    </div>
+                `;
+                }).join('');
+                if (this.state.debts.length === 0) container.innerHTML = '<div style="text-align:center;padding:30px;color:#cbd5e1;font-style:italic;">Nessun debito registrato</div>';
+            },
+
+            updateDebt(idx) {
+                const val = prompt("Cifra da versare?");
+                if (!val) return;
+                const amt = this.parseMoney(val);
+                this.state.debts[idx].paid += amt;
+                this.saveDebts();
+                this.addLog(amt, 'DEBITO', `Pagamento ${this.state.debts[idx].name}`, 'expense');
+            },
+
+            saveDebts() {
+                localStorage.setItem('leonardo_debts', JSON.stringify(this.state.debts));
+                this.render();
+            },
+
+            addLog(amt, cat, desc, type) {
+                this.state.data.LOG_DATI.push({ MESE: this.state.month, ANNO: this.state.year, CATEGORIA: cat, NOME: desc, IMPORTO: amt });
+                const targetSheet = type === 'expense' ? this.state.data.SPESE : this.state.data.ENTRATE;
+                const row = targetSheet.find(r => r.ANNO == this.state.year && String(r.MESE).toLowerCase().trim() === this.state.month);
+                if (row) { row[cat] = (this.parseMoney(row[cat])) + amt; row.TOTALE = (this.parseMoney(row.TOTALE)) + amt; }
+                const rec = this.state.data.RECAP.find(r => r.ANNO == this.state.year && String(r.MESE).toLowerCase().trim() === this.state.month);
+                if (rec) {
+                    if (type === 'expense') rec.USCITE = (this.parseMoney(rec.USCITE)) + amt;
+                    else rec.ENTRATE = (this.parseMoney(rec.ENTRATE)) + amt;
+                    rec.RISPARMIATI = (this.parseMoney(rec.ENTRATE)) - (this.parseMoney(rec.USCITE));
+                }
+                this.render();
+            },
+
+            setView(v) {
+                this.state.view = v;
+                document.getElementById('view-home').style.display = v === 'home' ? 'block' : 'none';
+                document.getElementById('view-analysis').style.display = v === 'analysis' ? 'block' : 'none';
+                document.getElementById('nav-home').classList.toggle('active', v === 'home');
+                document.getElementById('nav-analysis').classList.toggle('active', v === 'analysis');
+                if (v === 'analysis') this.initAnalysis();
+            },
+
+            initAnalysis() {
+                const allYears = [...new Set(this.state.data.RECAP.map(r => Math.floor(this.parseMoney(r.ANNO))))].sort();
+                const fromMSel = document.getElementById('analysis-from-month');
+                const toMSel = document.getElementById('analysis-to-month');
+                const fromYSel = document.getElementById('analysis-from-year');
+                const toYSel = document.getElementById('analysis-to-year');
+
+                [fromMSel, toMSel].forEach(sel => { sel.innerHTML = ''; MONTHS.forEach(m => sel.innerHTML += `<option value="${m}">${m}</option>`); });
+                [fromYSel, toYSel].forEach(sel => { sel.innerHTML = ''; allYears.forEach(y => sel.innerHTML += `<option value="${y}">${y}</option>`); });
+
+                const sorted = [...this.state.data.RECAP].sort((a, b) => (a.ANNO * 100 + MONTHS.indexOf(a.MESE?.toLowerCase())) - (b.ANNO * 100 + MONTHS.indexOf(b.MESE?.toLowerCase())));
+                if (sorted.length > 0) {
+                    fromMSel.value = String(sorted[0].MESE).toLowerCase().trim();
+                    fromYSel.value = Math.floor(this.parseMoney(sorted[0].ANNO));
+                    toMSel.value = String(sorted[sorted.length - 1].MESE).toLowerCase().trim();
+                    toYSel.value = Math.floor(this.parseMoney(sorted[sorted.length - 1].ANNO));
+                }
+
+                const speseCols = this.state.data.SPESE.length > 0 ? Object.keys(this.state.data.SPESE[0]).filter(k => !["MESE", "ANNO", "TOTALE", "DEBITO"].includes(k)) : [];
+                if (!this.state.analysisVis) {
+                    this.state.analysisVis = {};
+                    speseCols.forEach(c => this.state.analysisVis[c] = true);
+                    this.state.analysisVis['__TOTALE_USCITE__'] = true;
+                    this.state.analysisVis['__SALDO__'] = true;
+                    this.state.analysisVis['__ENTRATE__'] = true;
+                }
+                this.renderAnalysis();
+            },
+
+            renderAnalysis() {
+                const fromMonth = document.getElementById('analysis-from-month')?.value;
+                const fromYear = parseInt(document.getElementById('analysis-from-year')?.value);
+                const toMonth = document.getElementById('analysis-to-month')?.value;
+                const toYear = parseInt(document.getElementById('analysis-to-year')?.value);
+                if (!fromMonth || !fromYear || !toMonth || !toYear) return;
+
+                const fromIdx = fromYear * 100 + MONTHS.indexOf(fromMonth);
+                const toIdx = toYear * 100 + MONTHS.indexOf(toMonth);
+                const history = [...this.state.data.RECAP]
+                    .sort((a, b) => (a.ANNO * 100 + MONTHS.indexOf(a.MESE?.toLowerCase())) - (b.ANNO * 100 + MONTHS.indexOf(b.MESE?.toLowerCase())))
+                    .filter(h => {
+                        const idx = Math.floor(this.parseMoney(h.ANNO)) * 100 + MONTHS.indexOf(String(h.MESE).toLowerCase().trim());
+                        return idx >= fromIdx && idx <= toIdx;
+                    });
+
+                const speseCols = this.state.data.SPESE.length > 0 ? Object.keys(this.state.data.SPESE[0]).filter(k => !["MESE", "ANNO", "TOTALE", "DEBITO"].includes(k)) : [];
+                if (!this.state.analysisVis) {
+                    this.state.analysisVis = {};
+                    speseCols.forEach(c => this.state.analysisVis[c] = true);
+                    this.state.analysisVis['__TOTALE_USCITE__'] = true;
+                    this.state.analysisVis['__SALDO__'] = true;
+                    this.state.analysisVis['__ENTRATE__'] = true;
+                }
+
+                const PALETTE = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#06b6d4', '#14b8a6', '#84cc16', '#f97316', '#64748b', '#a78bfa', '#fb7185'];
+                const seriesMeta = [
+                    ...speseCols.map((c, i) => ({ key: c, label: c.toLowerCase(), color: PALETTE[i % PALETTE.length] })),
+                    { key: '__TOTALE_USCITE__', label: 'Totale Uscite', color: '#f43f5e' },
+                    { key: '__SALDO__', label: 'Saldo', color: '#10b981' },
+                    { key: '__ENTRATE__', label: 'Entrate', color: '#60a5fa' },
+                ];
+
+                const checkboxContainer = document.getElementById('analysis-checkboxes');
+                checkboxContainer.innerHTML = seriesMeta.map(s => `
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border-radius:10px;border-left:3px solid ${s.color};background:rgba(255,255,255,0.5);">
+                    <input type="checkbox" data-key="${s.key}" ${this.state.analysisVis[s.key] ? 'checked' : ''}
+                        style="accent-color:${s.color};width:14px;height:14px;" onchange="app.onAnalysisToggle(this)">
+                    <span style="font-size:11px;font-weight:700;text-transform:capitalize;color:#334155;">${s.label}</span>
+                </label>
+            `).join('');
+
+                const labels = history.map(h => `${String(h.MESE).toLowerCase().trim().substring(0, 3)} ${Math.floor(this.parseMoney(h.ANNO))}`);
+                const datasets = [];
+                seriesMeta.forEach(s => {
+                    if (!this.state.analysisVis[s.key]) return;
+                    let data;
+                    if (s.key === '__TOTALE_USCITE__') data = history.map(h => this.parseMoney(h.USCITE));
+                    else if (s.key === '__SALDO__') data = history.map(h => {
+                        const er = this.state.data.ENTRATE.find(r => Math.floor(this.parseMoney(r.ANNO)) === Math.floor(this.parseMoney(h.ANNO)) && String(r.MESE).toLowerCase().trim() === String(h.MESE).toLowerCase().trim());
+                        return this.parseMoney(er?.SALDO) || (this.parseMoney(h.ENTRATE) - this.parseMoney(h.USCITE));
+                    });
+                    else if (s.key === '__ENTRATE__') data = history.map(h => this.parseMoney(h.ENTRATE));
+                    else data = history.map(h => {
+                        const sr = this.state.data.SPESE.find(r => Math.floor(this.parseMoney(r.ANNO)) === Math.floor(this.parseMoney(h.ANNO)) && String(r.MESE).toLowerCase().trim() === String(h.MESE).toLowerCase().trim());
+                        return sr ? this.parseMoney(sr[s.key]) : 0;
+                    });
+                    datasets.push({
+                        label: s.label, data,
+                        borderColor: s.color, backgroundColor: s.color + '22',
+                        tension: 0.4, fill: false,
+                        pointRadius: history.length > 24 ? 2 : 4, pointHoverRadius: 6,
+                        borderWidth: (s.key === '__TOTALE_USCITE__' || s.key === '__ENTRATE__' || s.key === '__SALDO__') ? 3 : 2,
+                    });
+                });
+
+                if (this.state.charts['history']) this.state.charts['history'].destroy();
+                const ctx = document.getElementById('chart-history').getContext('2d');
+                this.state.charts['history'] = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: € ${ctx.parsed.y.toLocaleString('it-IT', { minimumFractionDigits: 2 })}` } }
+                        },
+                        scales: {
+                            x: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { font: { weight: 'bold', size: 10 }, maxRotation: 45 } },
+                            y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { callback: v => '€' + v.toLocaleString('it-IT'), font: { size: 10 } } }
+                        }
+                    }
+                });
+            },
+
+            onAnalysisToggle(checkbox) {
+                this.state.analysisVis[checkbox.dataset.key] = checkbox.checked;
+                this.renderAnalysis();
+            },
+
+            showModal(type) {
+                const container = document.getElementById('modal-container');
+                const content = document.getElementById('modal-content');
+                const title = document.getElementById('modal-title');
+                container.style.display = 'flex';
+
+                if (type === 'debt') {
+                    title.innerText = "Nuovo Debito";
+                    content.innerHTML = `
+                    <input id="d-name" class="input-field" placeholder="Nome Debito">
+                    <input id="d-total" type="number" class="input-field" placeholder="Importo Totale (€)">
+                    <input id="d-paid" type="number" class="input-field" placeholder="Già Pagato (€)" value="0">
+                    <button onclick="app.saveNewDebt()" class="btn-primary" style="width:100%;padding:16px;font-size:15px;text-transform:uppercase;letter-spacing:0.05em;">Salva</button>
+                `;
+                } else {
+                    const isInc = type === 'income';
+                    title.innerText = isInc ? "Aggiungi Entrata" : "Aggiungi Uscita";
+                    const cats = isInc
+                        ? Object.keys(this.state.data.ENTRATE[0]).filter(k => !["MESE", "ANNO", "TOTALE", "SALDO"].includes(k))
+                        : Object.keys(this.state.data.SPESE[0]).filter(k => !["MESE", "ANNO", "TOTALE", "DEBITO"].includes(k));
+                    content.innerHTML = `
+                    <input id="t-amt" type="number" inputmode="decimal" class="input-field" placeholder="Importo (€)">
+                    <select id="t-cat" class="input-field" style="color:#102a43;">
+                        ${cats.map(c => `<option value="${c}">${c.toLowerCase()}</option>`).join('')}
+                    </select>
+                    <input id="t-name" class="input-field" placeholder="Descrizione (opzionale)">
+                    <button onclick="app.saveTransaction('${type}')" class="btn-primary" style="width:100%;padding:16px;font-size:15px;text-transform:uppercase;letter-spacing:0.05em;background:${isInc ? 'linear-gradient(135deg,#059669,#10b981)' : 'linear-gradient(135deg,#dc2626,#ef4444)'}">Registra</button>
+                `;
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            },
+
+            hideModal() { document.getElementById('modal-container').style.display = 'none'; },
+
+            saveNewDebt() {
+                const name = document.getElementById('d-name').value;
+                const total = this.parseMoney(document.getElementById('d-total').value);
+                const paid = this.parseMoney(document.getElementById('d-paid').value);
+                if (!name || !total) return alert("Inserisci i dati obbligatori");
+                this.state.debts.push({ name, total, paid });
+                this.saveDebts();
+                this.hideModal();
+            },
+
+            saveTransaction(type) {
+                const amt = this.parseMoney(document.getElementById('t-amt').value);
+                const cat = document.getElementById('t-cat').value;
+                const desc = document.getElementById('t-name').value || cat;
+                if (!amt) return alert("Inserisci l'importo");
+                this.addLog(amt, cat, desc, type);
+                this.hideModal();
+            },
+
+            download() {
+                const wb = XLSX.utils.book_new();
+                Object.keys(this.state.data).forEach(k => {
+                    const ws = XLSX.utils.json_to_sheet(this.state.data[k]);
+                    XLSX.utils.book_append_sheet(wb, ws, k);
+                });
+                XLSX.writeFile(wb, "RECAPspese_Aggiornato.xlsx");
+            }
+        };
+
+        window.addEventListener('load', () => app.init());
+    </script>
+</body>
+
+</html>
