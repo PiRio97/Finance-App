@@ -398,11 +398,31 @@
                     Seleziona il tuo file Excel per iniziare.</p>
 
                 <label class="btn-primary"
-                    style="display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:16px; font-size:15px; cursor:pointer; border-radius:16px;">
+                    style="display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:14px; font-size:15px; cursor:pointer; border-radius:16px; margin-bottom:16px;">
                     <i data-lucide="file-spreadsheet" style="width:20px;height:20px;"></i>
                     Carica RECAPspese.xlsx
                     <input type="file" id="input-file" style="display:none;" accept=".xlsx">
                 </label>
+
+                <div style="position:relative; margin-bottom:16px; text-align:center;">
+                    <div
+                        style="position:absolute; top:50%; left:0; right:0; height:1px; background:#e2e8f0; z-index:1;">
+                    </div>
+                    <span
+                        style="position:relative; background:var(--glass); padding:0 12px; color:#94a3b8; font-size:11px; font-weight:700; text-transform:uppercase; z-index:2;">Oppure</span>
+                </div>
+
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="gsheets-url" class="input-field"
+                        style="margin-bottom:0; font-size:13px; padding:12px;" placeholder="Link Google Sheets...">
+                    <button onclick="app.loadFromGSheets()" class="btn-primary"
+                        style="padding:12px 16px; border-radius:14px;">
+                        <i data-lucide="cloud-download" style="width:20px;height:20px;"></i>
+                    </button>
+                </div>
+                <p style="font-size:10px; color:#94a3b8; margin-top:8px; line-height:1.4;">Il foglio deve essere
+                    condiviso come "Chiunque abbia il link può leggere". L'app scaricherà e salverà i dati in memoria.
+                </p>
 
                 <div id="lib-status"
                     style="margin-top:24px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap; opacity:0.5;">
@@ -437,6 +457,10 @@
                         <button onclick="app.download()"
                             style="width:38px;height:38px;background:white;border:1px solid #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
                             <i data-lucide="download" style="width:16px;height:16px;color:#64748b;"></i>
+                        </button>
+                        <button onclick="app.clearData()" title="Svuota Dati Memoria"
+                            style="width:38px;height:38px;background:white;border:1px solid #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                            <i data-lucide="trash-2" style="width:16px;height:16px;color:#ef4444;"></i>
                         </button>
                         <button onclick="location.reload()"
                             style="width:38px;height:38px;background:white;border:1px solid #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
@@ -591,12 +615,32 @@
                 const mSel = document.getElementById('select-month');
                 const ySel = document.getElementById('select-year');
                 MONTHS.forEach(m => mSel.innerHTML += `<option value="${m}">${m.substring(0, 3).toUpperCase()}</option>`);
-                [2022, 2023, 2024, 2025, 2026].forEach(y => ySel.innerHTML += `<option value="${y}">${y}</option>`);
+                [2022, 2023, 2024, 2025, 2026, 2027].forEach(y => ySel.innerHTML += `<option value="${y}">${y}</option>`);
                 mSel.addEventListener('change', e => { this.state.month = e.target.value; this.render(); });
                 ySel.addEventListener('change', e => { this.state.year = parseInt(e.target.value); this.render(); });
 
                 if (libs.lucide) lucide.createIcons();
                 this.initPWA();
+                this.checkLocalData();
+            },
+
+            checkLocalData() {
+                const savedData = localStorage.getItem('leonardo_finance_data');
+                if (savedData) {
+                    try {
+                        this.state.data = JSON.parse(savedData);
+                        this.finishLoading("Dati Locali Offline");
+                    } catch (e) {
+                        console.error("Errore lettura dati locali", e);
+                    }
+                }
+            },
+
+            clearData() {
+                if (confirm("Sei sicuro di voler svuotare la memoria dell'app? Dovrai ricaricare il file Excel o il link Google Sheets.")) {
+                    localStorage.removeItem('leonardo_finance_data');
+                    location.reload();
+                }
             },
 
             initPWA() {
@@ -626,36 +670,83 @@
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     const data = new Uint8Array(evt.target.result);
-                    const wb = XLSX.read(data, { type: 'array' });
-                    const sheets = {};
-                    wb.SheetNames.forEach(n => sheets[n.toUpperCase().trim()] = XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: 0 }));
-
-                    this.state.data = {
-                        RECAP: sheets.RECAP || [],
-                        SPESE: sheets.SPESE || [],
-                        ENTRATE: sheets.ENTRATE || [],
-                        LOG_DATI: sheets.LOG_DATI || []
-                    };
-
-                    // Auto-detect date
-                    if (this.state.data.RECAP.length > 0) {
-                        const last = [...this.state.data.RECAP].sort((a, b) => (b.ANNO * 100 + MONTHS.indexOf(b.MESE?.toLowerCase())) - (a.ANNO * 100 + MONTHS.indexOf(a.MESE?.toLowerCase())))[0];
-                        if (last) {
-                            this.state.year = Math.floor(last.ANNO);
-                            this.state.month = String(last.MESE).toLowerCase().trim();
-                            document.getElementById('select-month').value = this.state.month;
-                            document.getElementById('select-year').value = this.state.year;
-                        }
-                    }
-
-                    document.getElementById('screen-upload').style.display = 'none';
-                    document.getElementById('screen-main').style.display = 'block';
-                    document.getElementById('bottom-nav').style.display = 'flex';
-                    document.getElementById('fabs').style.display = 'flex';
-                    document.getElementById('display-filename').innerText = file.name;
-                    this.render();
+                    this.processExcelData(data, file.name);
                 };
                 reader.readAsArrayBuffer(file);
+            },
+
+            async loadFromGSheets() {
+                let url = document.getElementById('gsheets-url').value.trim();
+                if (!url) return alert("Inserisci un link Google Sheets valido");
+
+                // Convert Google Sheets URL to export XLSX URL
+                try {
+                    const match = url.match(/\/d\/(.*?)\//);
+                    if (!match) throw new Error("Link non valido");
+                    const sheetId = match[1];
+                    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+
+                    const btn = document.querySelector('button[onclick="app.loadFromGSheets()"]');
+                    const oldHtml = btn.innerHTML;
+                    btn.innerHTML = `<i data-lucide="loader-2" class="animate-spin" style="width:20px;height:20px;"></i>`;
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                    const response = await fetch(exportUrl);
+                    if (!response.ok) throw new Error("Errore network");
+
+                    const arrayBuffer = await response.arrayBuffer();
+                    const data = new Uint8Array(arrayBuffer);
+                    this.processExcelData(data, "Google Sheets Sync");
+
+                } catch (e) {
+                    console.error(e);
+                    alert("Errore nel download. Assicurati che il link sia corretto e il file sia impostato su 'Chiunque abbia il link può leggere'.");
+                } finally {
+                    const btn = document.querySelector('button[onclick="app.loadFromGSheets()"]');
+                    if (btn) { btn.innerHTML = `<i data-lucide="cloud-download" style="width:20px;height:20px;"></i>`; if (typeof lucide !== 'undefined') lucide.createIcons(); }
+                }
+            },
+
+            processExcelData(data, filename) {
+                const wb = XLSX.read(data, { type: 'array' });
+                const sheets = {};
+                wb.SheetNames.forEach(n => sheets[n.toUpperCase().trim()] = XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: 0 }));
+
+                this.state.data = {
+                    RECAP: sheets.RECAP || [],
+                    SPESE: sheets.SPESE || [],
+                    ENTRATE: sheets.ENTRATE || [],
+                    LOG_DATI: sheets.LOG_DATI || []
+                };
+
+                this.saveLocalData();
+                this.finishLoading(filename);
+            },
+
+            finishLoading(filename) {
+                // Auto-detect date
+                if (this.state.data.RECAP && this.state.data.RECAP.length > 0) {
+                    const last = [...this.state.data.RECAP].sort((a, b) => (b.ANNO * 100 + MONTHS.indexOf(String(b.MESE).toLowerCase().trim())) - (a.ANNO * 100 + MONTHS.indexOf(String(a.MESE).toLowerCase().trim())))[0];
+                    if (last) {
+                        this.state.year = Math.floor(last.ANNO);
+                        this.state.month = String(last.MESE).toLowerCase().trim();
+                        document.getElementById('select-month').value = this.state.month;
+                        document.getElementById('select-year').value = this.state.year;
+                    }
+                }
+
+                document.getElementById('screen-upload').style.display = 'none';
+                document.getElementById('screen-main').style.display = 'block';
+                document.getElementById('bottom-nav').style.display = 'flex';
+                document.getElementById('fabs').style.display = 'flex';
+                document.getElementById('display-filename').innerText = filename;
+                this.render();
+            },
+
+            saveLocalData() {
+                if (this.state.data) {
+                    localStorage.setItem('leonardo_finance_data', JSON.stringify(this.state.data));
+                }
             },
 
             parseMoney(v) {
@@ -776,6 +867,7 @@
                     else rec.ENTRATE = (this.parseMoney(rec.ENTRATE)) + amt;
                     rec.RISPARMIATI = (this.parseMoney(rec.ENTRATE)) - (this.parseMoney(rec.USCITE));
                 }
+                this.saveLocalData();
                 this.render();
             },
 
